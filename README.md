@@ -1,4 +1,4 @@
-# Unity Package Manager for Mac
+# UPM4M (Unity Package Manager for Mac)
 
 Unityのアセット（.unitypackageファイル）を整理・管理するためのネイティブ macOS アプリです。
 
