@@ -1,0 +1,40 @@
+# ── Xcode ──────────────────────────────────────
+# ユーザー固有の設定
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.moved-aside
+
+# ビルド生成物
+build/
+DerivedData/
+*.hmap
+*.ipa
+*.xcarchive
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# SPM（使用する場合）
+.build/
+.swiftpm/
+
+# ── macOS ──────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ── 開発ツール ─────────────────────────────────
+.cursor/
+.vscode/
+*.swp
+*.swo
+
+# ── アプリのユーザーデータ（念のため） ──────────
+# ※ 実際は ~/Library/ に保存されるので不要ですが保険として
+packages.json
+settings.json
