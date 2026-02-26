@@ -1,0 +1,44 @@
+{
+  "fill" : "automatic",
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode" : "screen",
+          "fill" : "none",
+          "glass-specializations" : [
+            {
+              "value" : true
+            },
+            {
+              "idiom" : "square",
+              "value" : false
+            }
+          ],
+          "hidden" : false,
+          "image-name" : "ドキュメント.png",
+          "name" : "ドキュメント",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.92,
+            "translation-in-points" : [
+              10.533700102541843,
+              -11.04000000000002
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}
