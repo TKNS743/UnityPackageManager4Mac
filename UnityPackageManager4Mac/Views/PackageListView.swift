@@ -7,6 +7,7 @@ struct PackageListView: View {
     @Binding var search: String
 
     @State private var sortOrder: SortOrder = .nameAsc
+    @State private var showMissingOnly: Bool = false
     @State private var deleteTarget: UnityPackage? = nil
     @State private var showDeleteConfirm = false
 
@@ -18,13 +19,21 @@ struct PackageListView: View {
         case folder     = "フォルダ"
     }
 
+    var missingCount: Int {
+        packages.filter { store.isMissing($0) }.count
+    }
+
+    var filtered: [UnityPackage] {
+        showMissingOnly ? packages.filter { store.isMissing($0) } : packages
+    }
+
     var sorted: [UnityPackage] {
         switch sortOrder {
-        case .nameAsc:  return packages.sorted { $0.name < $1.name }
-        case .nameDesc: return packages.sorted { $0.name > $1.name }
-        case .dateDesc: return packages.sorted { $0.addedAt > $1.addedAt }
-        case .dateAsc:  return packages.sorted { $0.addedAt < $1.addedAt }
-        case .folder:   return packages.sorted { $0.folder < $1.folder }
+        case .nameAsc:  return filtered.sorted { $0.name < $1.name }
+        case .nameDesc: return filtered.sorted { $0.name > $1.name }
+        case .dateDesc: return filtered.sorted { $0.addedAt > $1.addedAt }
+        case .dateAsc:  return filtered.sorted { $0.addedAt < $1.addedAt }
+        case .folder:   return filtered.sorted { $0.folder < $1.folder }
         }
     }
 
@@ -49,6 +58,31 @@ struct PackageListView: View {
 
             Divider()
 
+            // ── 欠損ファイル警告バナー ──
+            if missingCount > 0 {
+                Button {
+                    showMissingOnly.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(showMissingOnly
+                             ? "欠損 \(missingCount) 件を表示中（タップで全表示）"
+                             : "ファイルが見つからないパッケージが \(missingCount) 件あります")
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: showMissingOnly ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Color.orange.opacity(0.12))
+                }
+                .buttonStyle(.plain)
+                Divider()
+            }
+
             if sorted.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "shippingbox")
@@ -65,7 +99,7 @@ struct PackageListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(sorted, selection: $selectedID) { pkg in
-                    PackageRowView(package: pkg)
+                    PackageRowView(packageID: pkg.id)
                         .tag(pkg.id)
                         .contextMenu {
                             packageContextMenu(pkg)
@@ -156,44 +190,87 @@ struct PackageListView: View {
 // MARK: - Row
 
 struct PackageRowView: View {
-    let package: UnityPackage
+    @EnvironmentObject var store: PackageStore
+    let packageID: UUID
 
-    private var dateString: String {
-        let f = DateFormatter(); f.dateFormat = "yyyy/MM/dd"
-        return f.string(from: package.addedAt)
+    private var package: UnityPackage? {
+        store.packages.first { $0.id == packageID }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(package.name)
-                .font(.headline)
-                .lineLimit(1)
+        if let package = package {
+            HStack(spacing: 10) {
+                // サムネイル
+                if let thumbURL = package.thumbnailURL, let url = URL(string: thumbURL) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        case .failure:
+                            thumbnailPlaceholder
+                        case .empty:
+                            Color(nsColor: .controlBackgroundColor)
+                                .overlay(ProgressView().scaleEffect(0.5))
+                        @unknown default:
+                            thumbnailPlaceholder
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    thumbnailPlaceholder
+                        .frame(width: 44, height: 44)
+                }
 
-            HStack(spacing: 6) {
-                // Folder badge
-                Text(package.folder)
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.15), in: Capsule())
-                    .foregroundStyle(Color.accentColor)
+                // テキスト情報
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text(package.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                        if store.missingPackages.contains(packageID) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .help("ファイルが見つかりません")
+                        }
+                    }
 
-                if !package.fileName.isEmpty {
-                    Text(package.fileName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    HStack(spacing: 6) {
+                        Text(package.folder)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.accentColor)
+
+                        if !package.fileName.isEmpty {
+                            Text(package.fileName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+
+                    if !package.notes.isEmpty {
+                        Text(package.notes)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
             }
-
-            if !package.notes.isEmpty {
-                Text(package.notes)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
+            .padding(.vertical, 2)
         }
-        .padding(.vertical, 2)
+    }
+
+    private var thumbnailPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color.accentColor.opacity(0.1))
+            .overlay(
+                Image(systemName: "shippingbox.fill")
+                    .foregroundStyle(Color.accentColor.opacity(0.3))
+            )
     }
 }

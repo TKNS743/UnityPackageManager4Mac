@@ -8,7 +8,7 @@ struct UnityPackageManagerApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
-                .frame(minWidth: 900, minHeight: 600)
+                .frame(minWidth: 1200, minHeight: 800)
                 .onAppear {
                     // 初回起動 or 出力フォルダ未設定なら選択ダイアログを表示
                     if store.needsOutputDirectorySetup {
@@ -25,20 +25,18 @@ struct UnityPackageManagerApp: App {
                 }
                 .keyboardShortcut("n", modifiers: .command)
 
-                Divider()
-                
                 // エクスポートとインポート機能はもう少し仕様の詰めが必要なのでオミット
-                /*
-                 Button("CSVをエクスポート") {
-                    NotificationCenter.default.post(name: .exportCSV, object: nil)
-                }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
-
-                Button("CSVをインポート...") {
-                    NotificationCenter.default.post(name: .importCSV, object: nil)
-                }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-                 */
+                // Divider()
+                //
+                // Button("CSVをエクスポート") {
+                //     NotificationCenter.default.post(name: .exportCSV, object: nil)
+                // }
+                // .keyboardShortcut("e", modifiers: [.command, .shift])
+                //
+                // Button("CSVをインポート...") {
+                //     NotificationCenter.default.post(name: .importCSV, object: nil)
+                // }
+                // .keyboardShortcut("i", modifiers: [.command, .shift])
             }
         }
 
@@ -46,27 +44,13 @@ struct UnityPackageManagerApp: App {
             SettingsView()
                 .environmentObject(store)
         }
-        .commands {
-            CommandGroup(replacing: .appInfo) {
-                Button("UPM4M について") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(
-                        options: [
-                            .credits: NSAttributedString(
-                                string: "UnityPackageManager for Mac"
-                            )
-                        ]
-                    )
-                }
-            }
-        }
     }
 }
 
 extension Notification.Name {
-    static let addPackage = Notification.Name("addPackage")
+    static let addPackage     = Notification.Name("addPackage")
+    static let packageUpdated = Notification.Name("packageUpdated")
     // エクスポートとインポート機能はもう少し仕様の詰めが必要なのでオミット
-    /*
-    static let exportCSV  = Notification.Name("exportCSV")
-    static let importCSV  = Notification.Name("importCSV")
-     */
+    // static let exportCSV  = Notification.Name("exportCSV")
+    // static let importCSV  = Notification.Name("importCSV")
 }

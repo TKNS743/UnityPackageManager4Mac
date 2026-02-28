@@ -2,24 +2,42 @@ import SwiftUI
 
 struct PackageDetailView: View {
     @EnvironmentObject var store: PackageStore
-    let package: UnityPackage
+    let packageID: UUID
     @Binding var selectedID: UUID?
     @State private var showEdit = false
     @State private var showDeleteConfirm = false
 
-    private var dateString: String {
-        let f = DateFormatter(); f.dateFormat = "yyyy年MM月dd日"
-        return f.string(from: package.addedAt)
+    /// ストアから常に最新のパッケージを取得
+    private var package: UnityPackage? {
+        store.packages.first { $0.id == packageID }
     }
 
     var body: some View {
+        if let package = package {
+            detail(package: package)
+        }
+    }
+
+    @ViewBuilder
+    private func detail(package: UnityPackage) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
 
                 // ── Header ──
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(package.name)
+                        // サムネイル
+                    if let thumbURL = package.thumbnailURL, let url = URL(string: thumbURL) {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Color(nsColor: .controlBackgroundColor)
+                        }
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    Text(package.name)
                             .font(.largeTitle)
                             .fontWeight(.bold)
 
@@ -31,7 +49,10 @@ struct PackageDetailView: View {
                                 .background(Color.accentColor.opacity(0.15), in: Capsule())
                                 .foregroundStyle(Color.accentColor)
 
-                            Text(dateString)
+                            Text({
+                                let f = DateFormatter(); f.dateFormat = "yyyy年MM月dd日"
+                                return f.string(from: package.addedAt)
+                            }())
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
@@ -213,7 +234,7 @@ struct PackageDetailView: View {
         } message: {
             Text("「リストからのみ削除」はファイルをそのまま残します。\n「ファイルも削除」は整理先の「パッケージ名フォルダ」をまるごと削除します。")
         }
-    }
+    } // detail()
 }
 
 // MARK: - Detail Row

@@ -21,12 +21,8 @@ struct ContentView: View {
     @State private var showAddSheet = false
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
-    private let addNotif    = NotificationCenter.default.publisher(for: .addPackage)
-    // エクスポートとインポート機能はもう少し仕様の詰めが必要なのでオミット
-    /*
-    private let exportNotif = NotificationCenter.default.publisher(for: .exportCSV)
-    private let importNotif = NotificationCenter.default.publisher(for: .importCSV)
-     */
+    private let addNotif     = NotificationCenter.default.publisher(for: .addPackage)
+    private let updateNotif  = NotificationCenter.default.publisher(for: .packageUpdated)
 
     var filtered: [UnityPackage] {
         store.packages.filter { pkg in
@@ -42,20 +38,17 @@ struct ContentView: View {
         .sorted { $0.name < $1.name }
     }
 
-    var selectedPackage: UnityPackage? {
-        guard let id = selectedID else { return nil }
-        return store.packages.first { $0.id == id }
-    }
-
     var body: some View {
-        NavigationSplitView() {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(folderFilter: $folderFilter)
+                .navigationSplitViewColumnWidth(min: 140, ideal: 180, max: 240)
         } content: {
             PackageListView(
                 packages: filtered,
                 selectedID: $selectedID,
                 search: $search
             )
+            .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
             .navigationTitle("パッケージ")
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -66,21 +59,11 @@ struct ContentView: View {
                     }
                     .help("パッケージを追加 (⌘N)")
                 }
-                ToolbarItemGroup(placement: .secondaryAction) {
-                    // エクスポートとインポート機能はもう少し仕様の詰めが必要なのでオミット
-                    /*
-                    Button { store.exportCSV() } label: {
-                        Label("CSVエクスポート", systemImage: "square.and.arrow.up")
-                    }
-                    Button { store.importCSV() } label: {
-                        Label("CSVインポート", systemImage: "square.and.arrow.down")
-                    }
-                     */
-                }
+
             }
         } detail: {
-            if let pkg = selectedPackage {
-                PackageDetailView(package: pkg, selectedID: $selectedID)
+            if let id = selectedID, store.packages.contains(where: { $0.id == id }) {
+                PackageDetailView(packageID: id, selectedID: $selectedID)
             } else {
                 EmptyDetailView()
             }
@@ -88,16 +71,22 @@ struct ContentView: View {
         .sheet(isPresented: $showAddSheet) {
             PackageFormView(mode: .add)
         }
+        .sheet(isPresented: $store.showIntegrityDialog) {
+            IntegrityCheckView()
+        }
         .overlay(alignment: .bottom) {
             ToastView()
         }
-        .onReceive(addNotif)    { _ in showAddSheet = true }
-        // エクスポートとインポート機能はもう少し仕様の詰めが必要なのでオミット
-        /*
-        .onReceive(exportNotif) { _ in store.exportCSV() }
-        .onReceive(importNotif) { _ in store.importCSV() }
-        */
-         .background(ToolbarLabelModifier())
+        .onReceive(addNotif) { _ in showAddSheet = true }
+        .onReceive(updateNotif) { note in
+            // フォルダが変わった場合はフィルターを新しいフォルダに追従
+            if let newFolder = note.object as? String {
+                if folderFilter != "ALL" {
+                    folderFilter = newFolder
+                }
+            }
+        }
+        .background(ToolbarLabelModifier())
     }
 }
 
