@@ -8,7 +8,7 @@ struct UnityPackageManagerApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
-                .frame(minWidth: 900, minHeight: 600)
+                .frame(minWidth: 1200, minHeight: 800)
                 .onAppear {
                     // 初回起動 or 出力フォルダ未設定なら選択ダイアログを表示
                     if store.needsOutputDirectorySetup {

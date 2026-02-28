@@ -26,7 +26,18 @@ struct PackageDetailView: View {
                 // ── Header ──
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(package.name)
+                        // サムネイル
+                    if let thumbURL = package.thumbnailURL, let url = URL(string: thumbURL) {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Color(nsColor: .controlBackgroundColor)
+                        }
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    Text(package.name)
                             .font(.largeTitle)
                             .fontWeight(.bold)
 

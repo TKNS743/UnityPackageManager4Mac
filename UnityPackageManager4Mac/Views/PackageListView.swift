@@ -199,44 +199,78 @@ struct PackageRowView: View {
 
     var body: some View {
         if let package = package {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Text(package.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                    if store.isMissing(package) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .help("ファイルが見つかりません: \(package.filePath)")
+            HStack(spacing: 10) {
+                // サムネイル
+                if let thumbURL = package.thumbnailURL, let url = URL(string: thumbURL) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        case .failure:
+                            thumbnailPlaceholder
+                        case .empty:
+                            Color(nsColor: .controlBackgroundColor)
+                                .overlay(ProgressView().scaleEffect(0.5))
+                        @unknown default:
+                            thumbnailPlaceholder
+                        }
                     }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    thumbnailPlaceholder
+                        .frame(width: 44, height: 44)
                 }
 
-                HStack(spacing: 6) {
-                    Text(package.folder)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.15), in: Capsule())
-                        .foregroundStyle(Color.accentColor)
-
-                    if !package.fileName.isEmpty {
-                        Text(package.fileName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                // テキスト情報
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text(package.name)
+                            .font(.headline)
                             .lineLimit(1)
-                            .truncationMode(.middle)
+                        if store.missingPackages.contains(packageID) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .help("ファイルが見つかりません")
+                        }
                     }
-                }
 
-                if !package.notes.isEmpty {
-                    Text(package.notes)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(package.folder)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.accentColor)
+
+                        if !package.fileName.isEmpty {
+                            Text(package.fileName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+
+                    if !package.notes.isEmpty {
+                        Text(package.notes)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
             }
             .padding(.vertical, 2)
         }
+    }
+
+    private var thumbnailPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color.accentColor.opacity(0.1))
+            .overlay(
+                Image(systemName: "shippingbox.fill")
+                    .foregroundStyle(Color.accentColor.opacity(0.3))
+            )
     }
 }

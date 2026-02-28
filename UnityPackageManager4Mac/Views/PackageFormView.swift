@@ -26,8 +26,9 @@ struct PackageFormView: View {
     // 追加ファイル・フォルダ
     @State private var showAdditional = false
 
-    // ページタイトル取得
+    // ページタイトル・サムネイル取得
     @State private var pageTitle: String? = nil
+    @State private var thumbnailURL: String? = nil
     @State private var isFetchingTitle = false
     @State private var lastFetchedURL: String = ""
 
@@ -129,24 +130,37 @@ struct PackageFormView: View {
                             }
                         }
 
-                    // ページタイトル取得UI
-                    HStack(spacing: 8) {
-                        if isFetchingTitle {
-                            ProgressView().scaleEffect(0.7).frame(width: 14, height: 14)
-                            Text("タイトルを取得中...").font(.caption).foregroundStyle(.secondary)
-                        } else if let title = pageTitle {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-                            Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                            Button("再取得") { fetchPageTitle() }.font(.caption).buttonStyle(.plain).foregroundStyle(Color.accentColor)
-                        } else if !url.isEmpty {
-                            Button {
-                                fetchPageTitle()
-                            } label: {
-                                Label("ページタイトルを取得", systemImage: "arrow.clockwise")
+                    // ページタイトル・サムネイル取得UI
+                    HStack(spacing: 10) {
+                        // サムネイルプレビュー
+                        if let thumbURL = thumbnailURL, let url = URL(string: thumbURL) {
+                            AsyncImage(url: url) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Color(nsColor: .controlBackgroundColor)
                             }
-                            .font(.caption)
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            if isFetchingTitle {
+                                ProgressView().scaleEffect(0.7).frame(width: 14, height: 14)
+                                Text("取得中...").font(.caption).foregroundStyle(.secondary)
+                            } else if let title = pageTitle {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
+                                Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(2).truncationMode(.tail)
+                                Button("再取得") { fetchPageTitle() }.font(.caption).buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                            } else if !url.isEmpty {
+                                Button {
+                                    fetchPageTitle()
+                                } label: {
+                                    Label("ページタイトル・サムネイルを取得", systemImage: "arrow.clockwise")
+                                }
+                                .font(.caption)
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Color.accentColor)
+                            }
                         }
                     }
                     .frame(minHeight: 20)
@@ -218,6 +232,7 @@ struct PackageFormView: View {
             additionalPaths = pkg.additionalPaths
             showAdditional = !pkg.additionalPaths.isEmpty
             pageTitle = pkg.pageTitle
+            thumbnailURL = pkg.thumbnailURL
             lastFetchedURL = pkg.url
         }
     }
@@ -254,6 +269,7 @@ struct PackageFormView: View {
         guard !url.isEmpty, let reqURL = URL(string: url) else { return }
         isFetchingTitle = true
         pageTitle = nil
+        thumbnailURL = nil
         lastFetchedURL = url
 
         var request = URLRequest(url: reqURL, timeoutInterval: 10)
@@ -266,6 +282,8 @@ struct PackageFormView: View {
                       let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
                     return
                 }
+
+                // <title> を抽出
                 if let range = html.range(of: #"(?i)<title[^>]*>(.*?)</title>"#, options: .regularExpression) {
                     var title = String(html[range])
                     title = title.replacingOccurrences(of: #"(?i)<title[^>]*>"#, with: "", options: .regularExpression)
@@ -277,6 +295,30 @@ struct PackageFormView: View {
                     title = title.replacingOccurrences(of: "&#39;", with: "'")
                     title = title.trimmingCharacters(in: .whitespacesAndNewlines)
                     self.pageTitle = title.isEmpty ? nil : title
+                }
+
+                // og:image を抽出
+                let ogPatterns = [
+                    #"<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']"#,
+                    #"<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']"#
+                ]
+                for pattern in ogPatterns {
+                    if let range = html.range(of: pattern, options: .regularExpression) {
+                        let tag = String(html[range])
+                        if let contentRange = tag.range(of: #"content=["']([^"']+)["']"#, options: .regularExpression) {
+                            var imgURL = String(tag[contentRange])
+                            imgURL = imgURL.replacingOccurrences(of: #"content=["']"#, with: "", options: .regularExpression)
+                            imgURL = imgURL.replacingOccurrences(of: #"["']$"#, with: "", options: .regularExpression)
+                            imgURL = imgURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                            // 相対パスなら絶対URLに変換
+                            if imgURL.hasPrefix("//") {
+                                imgURL = "https:" + imgURL
+                            } else if imgURL.hasPrefix("/"), let base = URL(string: self.url) {
+                                imgURL = base.scheme.map { $0 + "://" + (base.host ?? "") + imgURL } ?? imgURL
+                            }
+                            if !imgURL.isEmpty { self.thumbnailURL = imgURL; break }
+                        }
+                    }
                 }
             }
         }.resume()
@@ -293,7 +335,8 @@ struct PackageFormView: View {
                 url: url,
                 notes: notes,
                 additionalPaths: showAdditional ? additionalPaths.filter { !$0.isEmpty } : [],
-                pageTitle: pageTitle
+                pageTitle: pageTitle,
+                thumbnailURL: thumbnailURL
             )
             store.add(pkg)
         case .edit(let original):
@@ -306,6 +349,7 @@ struct PackageFormView: View {
             pkg.notes = notes
             pkg.additionalPaths = showAdditional ? additionalPaths.filter { !$0.isEmpty } : []
             pkg.pageTitle = pageTitle
+            pkg.thumbnailURL = thumbnailURL
             store.update(pkg)
         }
         dismiss()

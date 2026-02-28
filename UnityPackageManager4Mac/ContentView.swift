@@ -41,12 +41,14 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(folderFilter: $folderFilter)
+                .navigationSplitViewColumnWidth(min: 140, ideal: 180, max: 240)
         } content: {
             PackageListView(
                 packages: filtered,
                 selectedID: $selectedID,
                 search: $search
             )
+            .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
             .navigationTitle("パッケージ")
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {

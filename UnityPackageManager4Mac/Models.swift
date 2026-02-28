@@ -14,6 +14,7 @@ struct UnityPackage: Identifiable, Codable, Equatable {
     var fileSize: Int64?
     var additionalPaths: [String] = []  // 一緒にコピーする追加ファイル・フォルダ（ソースパス）
     var pageTitle: String? = nil
+    var thumbnailURL: String? = nil  // サムネイルURL（表示時にAsyncImageで取得）
 
     static func == (lhs: UnityPackage, rhs: UnityPackage) -> Bool {
         lhs.id == rhs.id
