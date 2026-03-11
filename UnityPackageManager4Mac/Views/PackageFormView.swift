@@ -31,6 +31,7 @@ struct PackageFormView: View {
     @State private var thumbnailURL: String? = nil
     @State private var isFetchingTitle = false
     @State private var lastFetchedURL: String = ""
+    @State private var didLoadInitial = false
 
     private var isEdit: Bool {
         if case .edit = mode { return true }
@@ -80,6 +81,7 @@ struct PackageFormView: View {
                             .lineLimit(2)
                             .truncationMode(.middle)
                     }
+                    fieldLabel("⚠️unitypackageファイルが含まれないファイルも登録できます。警告が出ますが代表ファイルをここで選択してください")
 
                     // フォルダ
                     fieldLabel("フォルダ")
@@ -191,7 +193,12 @@ struct PackageFormView: View {
                     }
 
                     if showAdditional {
-                        AdditionalPathsView(paths: $additionalPaths)
+                        AdditionalPathsView(
+                            paths: $additionalPaths,
+                            destinationRoot: URL(fileURLWithPath: store.settings.outputDirectory)
+                                .appendingPathComponent(folder)
+                                .appendingPathComponent(name.trimmingCharacters(in: .whitespaces))
+                        )
                     }
 
                     if !filePath.isEmpty || !additionalPaths.isEmpty {
@@ -206,7 +213,11 @@ struct PackageFormView: View {
             }
         }
         .frame(width: 540, height: 620)
-        .onAppear { loadInitial() }
+        .onAppear {
+            guard !didLoadInitial else { return }
+            didLoadInitial = true
+            loadInitial()
+        }
     }
 
     // MARK: - Helpers
@@ -360,6 +371,7 @@ struct PackageFormView: View {
 
 struct AdditionalPathsView: View {
     @Binding var paths: [String]
+    let destinationRoot: URL
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -375,7 +387,7 @@ struct AdditionalPathsView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer()
-                            Text(path)
+                            Text(destinationRoot.appendingPathComponent(URL(fileURLWithPath: path).lastPathComponent).path)
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)

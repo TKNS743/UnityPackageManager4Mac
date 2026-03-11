@@ -153,31 +153,32 @@ struct PackageDetailView: View {
                     }
 
                     // 追加ファイル・フォルダ
-                    if !package.additionalPaths.isEmpty {
-                        GroupBox("追加ファイル・フォルダ") {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(package.additionalPaths, id: \.self) { path in
-                                    HStack(spacing: 6) {
-                                        let isDir: Bool = {
-                                            var d: ObjCBool = false
-                                            FileManager.default.fileExists(atPath: path, isDirectory: &d)
-                                            return d.boolValue
-                                        }()
-                                        Image(systemName: isDir ? "folder.fill" : "doc.fill")
-                                            .foregroundStyle(isDir ? .yellow : Color.accentColor)
-                                        Text(URL(fileURLWithPath: path).lastPathComponent)
-                                            .font(.callout)
-                                        Spacer()
-                                        Text(path)
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                            .lineLimit(1)
-                                            .truncationMode(.head)
-                                    }
+                    GroupBox("追加ファイル・フォルダ") {
+                        let destinationRoot = URL(fileURLWithPath: store.settings.outputDirectory)
+                            .appendingPathComponent(package.folder)
+                            .appendingPathComponent(package.name)
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(package.additionalPaths, id: \.self) { path in
+                                HStack(spacing: 6) {
+                                    let isDir: Bool = {
+                                        var d: ObjCBool = false
+                                        FileManager.default.fileExists(atPath: path, isDirectory: &d)
+                                        return d.boolValue
+                                    }()
+                                    Image(systemName: isDir ? "folder.fill" : "doc.fill")
+                                        .foregroundStyle(isDir ? .yellow : Color.accentColor)
+                                    Text(URL(fileURLWithPath: path).lastPathComponent)
+                                        .font(.callout)
+                                    Spacer()
+                                    Text(destinationRoot.appendingPathComponent(URL(fileURLWithPath: path).lastPathComponent).path)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                        .truncationMode(.head)
                                 }
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     // フォルダ構成プレビュー

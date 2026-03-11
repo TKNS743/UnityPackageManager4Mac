@@ -26,6 +26,8 @@ struct SettingsView: View {
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var store: PackageStore
+    @State private var pendingOutputDirectory: String? = nil
+    @State private var showMoveConfirm = false
 
     var body: some View {
         Form {
@@ -61,6 +63,32 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "整理先フォルダを変更します",
+            isPresented: $showMoveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("既存ファイルを新しい整理先へ移動する") {
+                if let path = pendingOutputDirectory {
+                    store.changeOutputDirectory(to: path, moveFiles: true)
+                }
+            }
+            Button("既存ファイルは移動せず変更のみ") {
+                if let path = pendingOutputDirectory {
+                    store.changeOutputDirectory(to: path, moveFiles: false)
+                }
+            }
+            Button("キャンセル", role: .cancel) {
+                pendingOutputDirectory = nil
+            }
+        } message: {
+            let count = store.packages.filter { !$0.filePath.isEmpty }.count
+            if count > 0 {
+                Text("\(count)件のパッケージが登録されています。\n\n「既存ファイルは移動せず変更のみ」を選択した場合、ファイルは元の場所に残ります。次回起動時に「ファイルが見つからない」として検知されますのでご注意ください。")
+            } else {
+                Text("整理先フォルダを変更します。")
+            }
+        }
     }
 
     private func pickOutputDirectory() {
@@ -74,8 +102,13 @@ struct GeneralSettingsView: View {
             panel.directoryURL = URL(fileURLWithPath: store.settings.outputDirectory)
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        store.settings.outputDirectory = url.path
-        store.save()
+        // 登録済みパッケージがある場合は確認ダイアログを出す
+        if !store.packages.filter({ !$0.filePath.isEmpty }).isEmpty {
+            pendingOutputDirectory = url.path
+            showMoveConfirm = true
+        } else {
+            store.changeOutputDirectory(to: url.path, moveFiles: false)
+        }
     }
 }
 
@@ -85,6 +118,8 @@ struct FolderManagementView: View {
     @EnvironmentObject var store: PackageStore
     @State private var newFolderName = ""
     @State private var selection: String?
+    @State private var folderToDelete: String? = nil
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         HSplitView {
@@ -114,8 +149,8 @@ struct FolderManagementView: View {
                         Text(selected).fontWeight(.medium)
                     }
                     Button("「\(selected)」を削除", role: .destructive) {
-                        store.deleteFolder(selected)
-                        selection = nil
+                        folderToDelete = selected
+                        showDeleteConfirm = true
                     }
                     .buttonStyle(.bordered)
                     .tint(.red)
@@ -126,13 +161,35 @@ struct FolderManagementView: View {
                 }
 
                 Spacer()
-
-                Text("※ フォルダを削除しても登録済みパッケージには影響しません")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .padding()
             .frame(minWidth: 220)
+            .confirmationDialog(
+                "「\(folderToDelete ?? "")」を削除しますか？",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("フォルダ内のデータも削除する", role: .destructive) {
+                    if let name = folderToDelete {
+                        store.deleteFolderWithPackages(name)
+                        selection = nil
+                    }
+                }
+                Button("フォルダ内のデータはそのままにする") {
+                    if let name = folderToDelete {
+                        store.deleteFolderKeepPackages(name)
+                        selection = nil
+                    }
+                }
+                Button("キャンセル", role: .cancel) {
+                    folderToDelete = nil
+                }
+            } message: {
+                let count = store.packages.filter { $0.folder == (folderToDelete ?? "") }.count
+                Text(count > 0
+                     ? "\(count)件のパッケージが含まれています。データはそのままにする場合は「未分類」カテゴリへ移動されます。"
+                     : "このフォルダにはパッケージがありません。")
+            }
         }
     }
 
@@ -174,7 +231,7 @@ struct DataSettingsView: View {
             } header: {
                 Text("保存場所")
             } footer: {
-                Text("データは Application Support 内に保存されています。\n ※上級者向け バックアップが必要な場合はこのファイルをコピーしてください。復元する際は整理先ディレクトリをバックアップ時と同じにしてください。")
+                Text("データは Application Support 内に保存されています。")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
