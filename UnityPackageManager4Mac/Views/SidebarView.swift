@@ -82,17 +82,37 @@ struct FolderRowView: View {
     let count: Int
     let canDelete: Bool
 
+    @State private var showDeleteConfirm = false
+
     var body: some View {
         Label(folder, systemImage: "folder")
             .badge(count)
             .contextMenu {
                 if canDelete {
                     Button(role: .destructive) {
-                        store.deleteFolder(folder)
+                        showDeleteConfirm = true
                     } label: {
                         Label("フォルダを削除", systemImage: "trash")
                     }
                 }
+            }
+            .confirmationDialog(
+                "「\(folder)」を削除しますか？",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("フォルダ内のデータも削除する", role: .destructive) {
+                    store.deleteFolderWithPackages(folder)
+                }
+                Button("フォルダ内のデータはそのままにする") {
+                    store.deleteFolderKeepPackages(folder)
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                let c = store.packages.filter { $0.folder == folder }.count
+                Text(c > 0
+                     ? "\(c)件のパッケージが含まれています。そのままにする場合は「未分類」へ移動されます。"
+                     : "このフォルダにはパッケージがありません。")
             }
     }
 }

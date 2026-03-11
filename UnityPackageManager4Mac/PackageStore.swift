@@ -77,11 +77,27 @@ class PackageStore: ObservableObject {
     // MARK: - CRUD
 
     func add(_ package: UnityPackage) {
+        // 前提チェック
+        if settings.outputDirectory.isEmpty {
+            showError("整理先フォルダが未設定です。設定から保存先を選んでください。")
+            return
+        }
+        if package.filePath.isEmpty {
+            // メインファイル未選択の場合でも、追加ファイルのみで登録したいケースはあるが
+            // ここでは明示的にエラーを出して分かりやすくする
+            // もし許容したい場合はこのチェックを外してください
+            showError("ファイルが選択されていません")
+            return
+        }
+
         var pkg = package
         if !pkg.filePath.isEmpty {
             if let newPath = copyToDestination(pkg) {
                 pkg.filePath = newPath
                 pkg.fileName = URL(fileURLWithPath: newPath).lastPathComponent
+            } else {
+                showError("「\(pkg.name)」のファイルコピーに失敗しました。選択したファイルの存在と、整理先フォルダの設定を確認してください。")
+                return
             }
         }
         packages.append(pkg)
@@ -111,19 +127,38 @@ class PackageStore: ObservableObject {
                 return
             }
 
-            // ① メインファイルを旧ディレクトリから新ディレクトリへコピー
+            // ① メインファイルを旧ディレクトリから新ディレクトリへコピー（なければフォールバック）
             let mainFileName = URL(fileURLWithPath: old.filePath).lastPathComponent
             let srcMain = oldDir.appendingPathComponent(mainFileName)
             let dstMain = newDir.appendingPathComponent(mainFileName)
+            var mainCopied = false
             if fm.fileExists(atPath: srcMain.path) {
                 do {
                     if fm.fileExists(atPath: dstMain.path) { try fm.removeItem(at: dstMain) }
                     try fm.copyItem(at: srcMain, to: dstMain)
                     pkg.filePath = dstMain.path
                     pkg.fileName = mainFileName
+                    mainCopied = true
                 } catch {
                     showError("ファイルのコピーに失敗: \(error.localizedDescription)")
                     return
+                }
+            } else {
+                // フォールバック: 実ファイルパスからコピー（old.filePath または pkg.filePath）
+                let candidatePaths = [old.filePath, pkg.filePath].filter { !$0.isEmpty }
+                if let existingSrcPath = candidatePaths.first(where: { fm.fileExists(atPath: $0) }) {
+                    let srcFromOriginal = URL(fileURLWithPath: existingSrcPath)
+                    let fallbackDst = newDir.appendingPathComponent(srcFromOriginal.lastPathComponent)
+                    do {
+                        if fm.fileExists(atPath: fallbackDst.path) { try fm.removeItem(at: fallbackDst) }
+                        try fm.copyItem(at: srcFromOriginal, to: fallbackDst)
+                        pkg.filePath = fallbackDst.path
+                        pkg.fileName = srcFromOriginal.lastPathComponent
+                        mainCopied = true
+                    } catch {
+                        showError("ファイルのコピーに失敗: \(error.localizedDescription)")
+                        return
+                    }
                 }
             }
 
@@ -133,12 +168,26 @@ class PackageStore: ObservableObject {
                 let itemName = URL(fileURLWithPath: addPath).lastPathComponent
                 let srcItem = oldDir.appendingPathComponent(itemName)
                 let dstItem = newDir.appendingPathComponent(itemName)
-                guard fm.fileExists(atPath: srcItem.path) else { continue }
-                do {
-                    if fm.fileExists(atPath: dstItem.path) { try fm.removeItem(at: dstItem) }
-                    try fm.copyItem(at: srcItem, to: dstItem)
-                } catch {
-                    showError("追加ファイルの移動に失敗: \(itemName)")
+
+                if fm.fileExists(atPath: srcItem.path) {
+                    do {
+                        if fm.fileExists(atPath: dstItem.path) { try fm.removeItem(at: dstItem) }
+                        try fm.copyItem(at: srcItem, to: dstItem)
+                    } catch {
+                        showError("追加ファイルの移動に失敗: \(itemName)")
+                    }
+                } else {
+                    // フォールバック: 元の実ファイルパスからコピー
+                    if fm.fileExists(atPath: addPath) {
+                        let srcFromOriginal = URL(fileURLWithPath: addPath)
+                        let fallbackDst = newDir.appendingPathComponent(srcFromOriginal.lastPathComponent)
+                        do {
+                            if fm.fileExists(atPath: fallbackDst.path) { try fm.removeItem(at: fallbackDst) }
+                            try fm.copyItem(at: srcFromOriginal, to: fallbackDst)
+                        } catch {
+                            showError("追加ファイルの移動に失敗: \(srcFromOriginal.lastPathComponent)")
+                        }
+                    }
                 }
             }
 
@@ -200,15 +249,135 @@ class PackageStore: ObservableObject {
         showSuccess("すべての設定をリセットしました")
     }
 
+    /// 整理先フォルダを変更する。moveFiles=true の場合は既存ファイルも移動する
+    func changeOutputDirectory(to newPath: String, moveFiles: Bool) {
+        let fm = FileManager.default
+        let oldPath = settings.outputDirectory
+        guard !oldPath.isEmpty, oldPath != newPath else {
+            settings.outputDirectory = newPath
+            save()
+            return
+        }
+
+        let oldRoot = URL(fileURLWithPath: oldPath)
+        let newRoot = URL(fileURLWithPath: newPath)
+
+        // moveFiles=false の場合はパスだけ変更して終了
+        guard moveFiles else {
+            settings.outputDirectory = newPath
+            save()
+            showSuccess("整理先フォルダを変更しました")
+            return
+        }
+
+        // 既存ファイルを移動
+        var movedCount = 0
+        var failedCount = 0
+        for i in 0..<packages.count {
+            let pkg = packages[i]
+            guard !pkg.filePath.isEmpty else { continue }
+
+            // 旧ディレクトリ・新ディレクトリ
+            let oldDir = oldRoot.appendingPathComponent(pkg.folder).appendingPathComponent(pkg.name)
+            let newDir = newRoot.appendingPathComponent(pkg.folder).appendingPathComponent(pkg.name)
+
+            guard fm.fileExists(atPath: oldDir.path) else { continue }
+
+            do {
+                try fm.createDirectory(at: newDir.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if fm.fileExists(atPath: newDir.path) { try fm.removeItem(at: newDir) }
+                try fm.moveItem(at: oldDir, to: newDir)
+
+                // filePath を新しいパスに更新
+                let fileName = URL(fileURLWithPath: pkg.filePath).lastPathComponent
+                packages[i].filePath = newDir.appendingPathComponent(fileName).path
+
+                // additionalPaths も新しい整理先に合わせて更新
+                packages[i].additionalPaths = packages[i].additionalPaths.map { addPath in
+                    let itemName = URL(fileURLWithPath: addPath).lastPathComponent
+                    return newDir.appendingPathComponent(itemName).path
+                }
+
+                movedCount += 1
+            } catch {
+                failedCount += 1
+            }
+        }
+
+        settings.outputDirectory = newPath
+        save()
+
+        if failedCount > 0 {
+            showError("\(failedCount)件の移動に失敗しました（\(movedCount)件成功）")
+        } else if movedCount > 0 {
+            showSuccess("\(movedCount)件のパッケージを移動しました")
+        } else {
+            showSuccess("整理先フォルダを変更しました")
+        }
+    }
+
     func addFolder(_ name: String) {
         guard !settings.folders.contains(name) else { return }
         settings.folders.append(name)
         save()
     }
 
-    func deleteFolder(_ name: String) {
+    /// フォルダを削除し、内包パッケージをリスト・ファイルごと削除する
+    func deleteFolderWithPackages(_ name: String) {
+        let fm = FileManager.default
+        // 該当カテゴリのパッケージを全て削除
+        let targets = packages.filter { $0.folder == name }
+        for pkg in targets {
+            if let pkgDir = packageDirectory(pkg), fm.fileExists(atPath: pkgDir.path) {
+                try? fm.removeItem(at: pkgDir)
+            }
+        }
+        // カテゴリフォルダ自体も削除（空なら）
+        if !settings.outputDirectory.isEmpty {
+            let categoryDir = URL(fileURLWithPath: settings.outputDirectory).appendingPathComponent(name)
+            if fm.fileExists(atPath: categoryDir.path) {
+                try? fm.removeItem(at: categoryDir)
+            }
+        }
+        packages.removeAll { $0.folder == name }
         settings.folders.removeAll { $0 == name }
         save()
+        showSuccess("「\(name)」と\(targets.count)件のパッケージを削除しました")
+    }
+
+    /// フォルダを削除し、内包パッケージを「未分類」へ移動する
+    func deleteFolderKeepPackages(_ name: String) {
+        let uncategorized = "未分類"
+        // 「未分類」フォルダがなければ追加
+        if !settings.folders.contains(uncategorized) {
+            settings.folders.append(uncategorized)
+        }
+        // 該当カテゴリのパッケージを「未分類」へ移動（ファイルも移動）
+        let targets = packages.indices.filter { packages[$0].folder == name }
+        for i in targets {
+            let old = packages[i]
+            var pkg = old
+            pkg.folder = uncategorized
+            // ファイルを新しい場所へ移動
+            let fm = FileManager.default
+            let oldDir = packageDirectory(old)
+            let newDir = packageDirectory(pkg)
+            if let od = oldDir, let nd = newDir, fm.fileExists(atPath: od.path) {
+                do {
+                    try fm.createDirectory(at: nd.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    if fm.fileExists(atPath: nd.path) { try fm.removeItem(at: nd) }
+                    try fm.moveItem(at: od, to: nd)
+                    pkg.filePath = nd.appendingPathComponent(URL(fileURLWithPath: old.filePath).lastPathComponent).path
+                } catch {
+                    // 移動失敗時はパスだけ更新
+                    pkg.filePath = nd.appendingPathComponent(URL(fileURLWithPath: old.filePath).lastPathComponent).path
+                }
+            }
+            packages[i] = pkg
+        }
+        settings.folders.removeAll { $0 == name }
+        save()
+        showSuccess("「\(name)」を削除し、\(targets.count)件を未分類へ移動しました")
     }
 
     // MARK: - File Organization
