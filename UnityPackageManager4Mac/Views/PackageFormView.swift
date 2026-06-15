@@ -335,6 +335,87 @@ struct PackageFormView: View {
         }.resume()
     }
 
+    private func ensureDirectoryExists(at url: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    // 整理先: outputDirectory/folder/name
+    private func copySelectedItemsToDestination() -> Bool {
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let destinationRoot = URL(fileURLWithPath: store.settings.outputDirectory)
+            .appendingPathComponent(folder)
+            .appendingPathComponent(trimmedName)
+
+        do {
+            try ensureDirectoryExists(at: destinationRoot)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "フォルダを作成できませんでした"
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return false
+        }
+
+        // コピー対象を作る（代表ファイル + 追加ファイル・フォルダ）
+        var itemsToCopy: [(src: URL, dst: URL)] = []
+
+        if !filePath.isEmpty, !fileName.isEmpty {
+            let src = URL(fileURLWithPath: filePath)
+            let dst = destinationRoot.appendingPathComponent(fileName)
+            itemsToCopy.append((src, dst))
+        }
+
+        for path in additionalPaths where !path.isEmpty {
+            let src = URL(fileURLWithPath: path)
+            let dst = destinationRoot.appendingPathComponent(src.lastPathComponent)
+            itemsToCopy.append((src, dst))
+        }
+
+        // 上書き確認（既存があるものが一つでもあればまとめて確認）
+        let fm = FileManager.default
+        let existing = itemsToCopy.filter { fm.fileExists(atPath: $0.dst.path) }
+        if !existing.isEmpty {
+            let alert = NSAlert()
+            alert.messageText = "既存のファイル/フォルダがあります"
+            alert.informativeText = "同名のファイルまたはフォルダが整理先に存在します。上書きしてもよろしいですか？"
+            alert.addButton(withTitle: "上書き")
+            alert.addButton(withTitle: "キャンセル")
+            let result = alert.runModal()
+            if result != .alertFirstButtonReturn {
+                return false
+            }
+            // 上書き許可 → 既存を削除
+            for item in existing {
+                do { try fm.removeItem(at: item.dst) } catch {
+                    let err = NSAlert()
+                    err.messageText = "既存の削除に失敗しました"
+                    err.informativeText = error.localizedDescription
+                    err.addButton(withTitle: "OK")
+                    err.runModal()
+                    return false
+                }
+            }
+        }
+
+        // コピー実行
+        for item in itemsToCopy {
+            do {
+                try fm.copyItem(at: item.src, to: item.dst)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "コピーに失敗しました"
+                alert.informativeText = "\(item.src.lastPathComponent) → \(item.dst.path)\n\n\(error.localizedDescription)"
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+                return false
+            }
+        }
+
+        return true
+    }
+
     private func commit() {
         switch mode {
         case .add:
@@ -349,6 +430,9 @@ struct PackageFormView: View {
                 pageTitle: pageTitle,
                 thumbnailURL: thumbnailURL
             )
+            // 追加時にもコピーを実行。失敗 or キャンセル時は保存を中断
+            let copiedOnAdd = copySelectedItemsToDestination()
+            guard copiedOnAdd else { return }
             store.add(pkg)
         case .edit(let original):
             var pkg = original
@@ -361,6 +445,11 @@ struct PackageFormView: View {
             pkg.additionalPaths = showAdditional ? additionalPaths.filter { !$0.isEmpty } : []
             pkg.pageTitle = pageTitle
             pkg.thumbnailURL = thumbnailURL
+
+            // 編集時にコピーを実行。失敗 or キャンセル時は保存を中断
+            let copied = copySelectedItemsToDestination()
+            guard copied else { return }
+
             store.update(pkg)
         }
         dismiss()
@@ -453,3 +542,4 @@ struct AdditionalPathsView: View {
         paths.append(contentsOf: newPaths)
     }
 }
+
